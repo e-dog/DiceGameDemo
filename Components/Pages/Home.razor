@@ -1,13 +1,102 @@
 ﻿@page "/"
-
+@rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
-
+@using Microsoft.AspNetCore.Identity
+@using DiceGame.Data
+@using DiceGame.Components.Account
 @attribute [Authorize]
+@implements IDisposable
 
-<PageTitle>Auth</PageTitle>
+@inject UserManager<ApplicationUser> userManager
+@inject PlayerData PlayerData
 
-<h1>You are authenticated</h1>
+<PageTitle>Dice Game</PageTitle>
 
-<AuthorizeView>
-    Hello @context.User.Identity?.Name!
-</AuthorizeView>
+@if (user is null)
+{
+    <p>Loading...</p>
+}
+else if (room is null)
+{
+    @if (matchmaking)
+    {
+        <h1>Looking for other player...</h1>
+        <button class="btn btn-primary" @onclick="StopMatchmaking">Cancel</button>
+    }
+    else
+    {
+        <h1>Hello, @(user.UserName), wanna play?</h1>
+        <button class="btn btn-primary" @onclick="StartMatchmaking">Play!</button>
+    }
+}
+else
+{
+    <h1>@(room?.GetUser(0).UserName) vs @(room?.GetUser(1).UserName)</h1>
+}
+
+
+@code
+{
+    private ApplicationUser? user;
+    private Room? room;
+    private bool matchmaking = false;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState  { get; set; }
+
+
+    void StartMatchmaking()
+    {
+        if (user is not null)
+        {
+            matchmaking = true;
+            PlayerData.StartMatchmaking(user.Id, userManager);
+        }
+    }
+
+
+    void StopMatchmaking()
+    {
+        matchmaking = false;
+
+        if (user is not null)
+        {
+            PlayerData.StopMatchmaking(user.Id);
+        }
+    }
+
+
+    void UserRoomChange(object? sender, EventArgs e)
+    {
+        if (user is not null)
+        {
+            var newRoom = PlayerData.GetUserRoom(user.Id);
+            if (room != newRoom)
+            {
+                room = newRoom;
+                if (room is not null) matchmaking = false;
+                InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+
+    protected async override Task OnInitializedAsync()
+    {
+        if (authenticationState is not null)
+        {
+            var principal = (await authenticationState).User;
+            if (principal is not null) user = await userManager.GetUserAsync(principal);
+            UserRoomChange(this, EventArgs.Empty);
+        }
+
+        PlayerData.UserRoomChange += UserRoomChange;
+    }
+
+
+    public void Dispose()
+    {
+        PlayerData.UserRoomChange -= UserRoomChange;
+        if (matchmaking && user is not null) PlayerData.StopMatchmaking(user.Id);
+    }
+}
