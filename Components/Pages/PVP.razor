@@ -1,0 +1,148 @@
+@page "/room/{RoomId:int}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using DiceGame.Data
+@using DiceGame.Components.Account
+@attribute [Authorize]
+@implements IDisposable
+
+@inject UserManager<ApplicationUser> userManager
+@inject PlayerData PlayerData
+
+<PageTitle>Dice Game: PVP</PageTitle>
+
+@if (room is null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="row">
+        @for (int i=0; i<2; i++)
+        {
+            <div class="card" style="max-width: 20rem">
+                <div class="card-body">
+                    <h2 class="text-center">@(room.GetUser(i).UserName)</h2>
+                    <h1 class="text-center">@(room.Scores[i])</h1>
+
+                    <h2 class="text-center">
+                        @if (String.IsNullOrEmpty(room.Rolls[i])) { <text>&nbsp;</text> }
+                        else { @(room.Rolls[i]) }
+                    </h2>
+
+                    @if (!room.GameOver && room.Side == i && room.GetUser(i).Id == user?.Id)
+                    {
+                        <div class="row">
+                            <button @onclick="@(()=>RollDice(false))"  class="btn btn-lg btn-block btn-primary">Two Dice</button>
+                            <button @onclick="@(()=>RollDice(true))"   class="btn btn-lg btn-block btn-danger">Super Die</button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+
+@code
+{
+    [Parameter]
+    public int RoomId { get; set; } = -1;
+
+    private ApplicationUser? user;
+    private Room? room;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState  { get; set; }
+
+
+    protected void RollDice(bool super)
+    {
+        if (room is null || user is null) return;
+        if (room.GetUser(room.Side).Id != user.Id) return;
+
+        var rng = Random.Shared;
+
+        if (super)
+        {
+            var d1 = rng.Next(1, 6-1);
+            if (d1 == 1)
+            {
+                // game over
+                room.Rolls[room.Side] = "X";
+                room.Step++;
+                room.Winner = room.Side;
+                room.GameOver = true;
+            }
+            else
+            {
+                if (d1 == 6) d1 = 24;
+                room.Rolls[room.Side] = $"+{d1}!";
+                room.Scores[room.Side] += d1;
+                room.Step++;
+            }
+        }
+        else
+        {
+            var d1 = rng.Next(1, 6-1);
+            var d2 = rng.Next(1, 6-1);
+            room.Rolls[room.Side] = $"+{d1} +{d2}";
+            room.Scores[room.Side] += d1 + d2;
+            room.Step++;
+        }
+
+        room.Rolls[room.Side] = "";
+
+        if (room.Turn >= 3 && !room.GameOver)
+        {
+            room.GameOver = true;
+            if      (room.Scores[0] > room.Scores[1]) room.Winner = 0;
+            else if (room.Scores[1] > room.Scores[0]) room.Winner = 1;
+        }
+
+        room.OnRoomChanged();
+
+        if (room.GameOver)
+        {
+            //== game over stuff
+        }
+    }
+
+
+    void UserRoomChange(object? sender, EventArgs e)
+    {
+        if (user is null || PlayerData.GetUserRoom(user.Id) != room)
+        {
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+
+    void RoomChanged(object? sender, EventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+
+    protected async override Task OnInitializedAsync()
+    {
+        room = PlayerData.GetRoom(RoomId);
+        if (room is not null) room.RoomChanged += RoomChanged;
+
+        if (authenticationState is not null)
+        {
+            var principal = (await authenticationState).User;
+            if (principal is not null) user = await userManager.GetUserAsync(principal);
+        }
+
+        PlayerData.UserRoomChange += UserRoomChange;
+    }
+
+
+    public void Dispose()
+    {
+        if (room is not null) room.RoomChanged -= RoomChanged;
+        PlayerData.UserRoomChange -= UserRoomChange;
+    }
+}

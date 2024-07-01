@@ -8,6 +8,7 @@
 @implements IDisposable
 
 @inject UserManager<ApplicationUser> userManager
+@inject NavigationManager NavigationManager
 @inject PlayerData PlayerData
 
 <PageTitle>Dice Game</PageTitle>
@@ -31,7 +32,7 @@ else if (room is null)
 }
 else
 {
-    <h1>@(room?.GetUser(0).UserName) vs @(room?.GetUser(1).UserName)</h1>
+    NavigationManager.NavigateTo("/room/"+room.Id);
 }
 
 

@@ -9,25 +9,66 @@ using UserId = string;
 
 public class Room
 {
-    private ApplicationUser[] users = new ApplicationUser[2];
-
-    public Room(ApplicationUser user0, ApplicationUser user1)
-    {
-        users[0] = user0;
-        users[1] = user1;
-    }
+    public int Id { get { return _id; } }
 
     public ApplicationUser GetUser(int index)
     {
         return users[index];
     }
+
+
+    // game stuff
+    public int[] Scores = new int[2];
+    public int Step;
+
+    public int Turn { get { return Step/2; } }
+    public int Side { get { return Step%2; } }
+
+    public string[] Rolls = new string[2];
+
+    public int Winner;
+    public bool GameOver;
+
+
+    public event EventHandler? RoomChanged;
+    public void OnRoomChanged()
+    => RoomChanged?.Invoke(this, EventArgs.Empty);
+
+
+    public void ResetGame()
+    {
+        for (int i=0; i<2; i++)
+        {
+            Scores[i] = 0;
+            Rolls[i] = "";
+        }
+
+        Step = 0;
+        Winner = -1;
+        GameOver = false;
+    }
+
+
+    // private stuff
+    public Room(ApplicationUser user0, ApplicationUser user1)
+    {
+        users[0] = user0;
+        users[1] = user1;
+        ResetGame();
+    }
+
+    public void SetId(int id) { _id = id; }
+
+    private int _id = -1;
+    private ApplicationUser[] users = new ApplicationUser[2];
 }
 
 
 public class PlayerData
 {
     private UserId? waitingUserId;
-    private ConcurrentDictionary<UserId, Room> rooms = new ConcurrentDictionary<UserId, Room>();
+    private ConcurrentDictionary<UserId, Room> userRooms = new ConcurrentDictionary<UserId, Room>();
+    private ConcurrentDictionary<int, Room> rooms = new ConcurrentDictionary<int, Room>();
 
     public event EventHandler? UserRoomChange;
 
@@ -38,7 +79,15 @@ public class PlayerData
     public Room? GetUserRoom(UserId userId)
     {
         Room? room;
-        rooms.TryGetValue(userId, out room);
+        userRooms.TryGetValue(userId, out room);
+        return room;
+    }
+
+
+    public Room? GetRoom(int id)
+    {
+        Room? room;
+        rooms.TryGetValue(id, out room);
         return room;
     }
 
@@ -70,12 +119,17 @@ public class PlayerData
             lock(this)
             {
                 var room = new Room(user, otherUser);
-                if (!rooms.TryAdd(userId, room)) return;
-                if (!rooms.TryAdd(otherUserId, room))
+                if (!userRooms.TryAdd(userId, room)) return;
+                if (!userRooms.TryAdd(otherUserId, room))
                 {
-                    rooms.TryRemove(userId, out room);
+                    userRooms.TryRemove(userId, out room);
                     return;
                 }
+
+                var rng = Random.Shared;
+                do {
+                    room.SetId(rng.Next());
+                } while(!rooms.TryAdd(room.Id, room));
             }
 
             OnUserRoomChange();
