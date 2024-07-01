@@ -1,0 +1,75 @@
+﻿@page "/leaderboard"
+@attribute [StreamRendering]
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Identity
+@using DiceGame.Data
+
+@inject ApplicationDbContext dbContext
+@inject UserManager<ApplicationUser> userManager
+
+<PageTitle>Dice Game Leaderboard</PageTitle>
+
+<h1>Hall of Fame</h1>
+
+@if (records == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Player</th>
+                <th>Score</th>
+                <th>Winner</th>
+                <th>Winner Score</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var mr in records)
+            {
+                <tr>
+                    <td>@mr.User?.UserName</td>
+                    <td>@mr.Match.GetUserScore(mr.User?.Id)</td>
+                    <td>@mr.WinnerUser?.UserName</td>
+                    <td>@mr.Match.WinnerScore</td>
+                    <td>@mr.Match.When.ToShortDateString()</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<LeaderboardRecord>? records;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var matches = await
+                    dbContext.MatchRecords.Select(m => new { m, u=m.UserId1 })
+            .Concat(dbContext.MatchRecords.Select(m => new { m, u=m.UserId2 }))
+            .GroupBy(
+                x => x.u,
+                (u, g) => g.OrderByDescending(x => x.m.When).First()
+            )
+            .ToListAsync();
+
+        records = (await Task.WhenAll(matches.ConvertAll(
+            async x => new LeaderboardRecord
+            {
+                User = await userManager.FindByIdAsync(x.u),
+                WinnerUser = (x.m.WinnerUserId is null ?
+                    null : await userManager.FindByIdAsync(x.m.WinnerUserId)),
+                Match = x.m,
+            }))).ToList();
+    }
+
+    class LeaderboardRecord
+    {
+        public ApplicationUser? User;
+        public ApplicationUser? WinnerUser;
+        public MatchRecord Match = default!;
+    }
+}

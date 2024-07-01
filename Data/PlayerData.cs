@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiceGame.Data;
 
@@ -67,7 +68,7 @@ public class Room
 }
 
 
-public class PlayerData
+public class PlayerData(IDbContextFactory<ApplicationDbContext> _DbFactory)
 {
     protected class UserData
     {
@@ -139,7 +140,21 @@ public class PlayerData
             users.GetOrAdd(room.GetUser(i).Id, UserDataFactory).OnUserRoomChange();
         }
 
-        //== record to db
+        // record to db
+        using (var context = _DbFactory.CreateDbContext())
+        {
+            context.Add(new MatchRecord
+            {
+                UserId1 = room.GetUser(0).Id,
+                UserId2 = room.GetUser(1).Id,
+                Score1 = room.Scores[0],
+                Score2 = room.Scores[1],
+                Winner = room.Winner,
+                When = DateTime.Now,
+            });
+
+            context.SaveChangesAsync();
+        }
     }
 
 
