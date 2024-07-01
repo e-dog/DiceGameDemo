@@ -4,10 +4,12 @@
 @using Microsoft.AspNetCore.Identity
 @using DiceGame.Data
 @using DiceGame.Components.Account
+@using System.Threading
 @attribute [Authorize]
 @implements IDisposable
 
 @inject UserManager<ApplicationUser> userManager
+@inject NavigationManager NavigationManager
 @inject PlayerData PlayerData
 
 <PageTitle>Dice Game: PVP</PageTitle>
@@ -20,16 +22,25 @@ else
 {
     @if (room.GameOver)
     {
-        <h1>Game Over</h1>
+        if (room.Winner < 0)
+        {
+            <h1>Draw</h1>
+        }
+        else
+        {
+            <h1>@(room.GetUser(room.Winner).UserName) wins!</h1>
+        }
     }
     else
     {
+        rematchSelected = false;
         <h1>Turn @(room.Turn+1)</h1>
     }
+
     <div class="d-flex">
         @for (int i=0; i<2; i++)
         {
-            bool curSide = (room.Side == i);
+            bool curSide = (!room.GameOver && room.Side == i);
             <div class="card text-center mx-3 @(curSide?"bg-primary text-light":"")" style="width: 20rem">
                 @if (room.GetUser(i).Id == user?.Id)
                 {
@@ -50,9 +61,20 @@ else
                     @if (!room.GameOver && room.Side == i && room.GetUser(i).Id == user?.Id)
                     {
                         <div>
-                            <button @onclick="@(()=>RollDice(false))"  class="btn btn-lg btn-block btn-primary">Two Dice</button>
+                            <button @onclick="@(()=>RollDice(false))"  class="btn btn-lg btn-block btn-dark">Two Dice</button>
                             <button @onclick="@(()=>RollDice(true))"   class="btn btn-lg btn-block btn-danger">Super Die</button>
                         </div>
+                    }
+                    else if (room.GameOver && room.GetUser(i).Id == user?.Id)
+                    {
+                        if (!rematchSelected)
+                        {
+                            <h3>Rematch?</h3>
+                            <div>
+                                <button @onclick="@(() => RematchChoice(true))"  class="btn btn-primary">Yes!</button>
+                                <button @onclick="@(() => RematchChoice(false))" class="btn btn-danger">No...</button>
+                            </div>
+                        }
                     }
                 </div>
             </div>
@@ -68,6 +90,7 @@ else
 
     private ApplicationUser? user;
     private Room? room;
+    private bool rematchSelected = false;
 
     [CascadingParameter]
     private Task<AuthenticationState>? authenticationState  { get; set; }
@@ -118,10 +141,29 @@ else
         }
 
         room.OnRoomChanged();
+    }
 
-        if (room.GameOver)
+
+    protected void RematchChoice(bool choice)
+    {
+        if (room is null || user is null) return;
+        if (room.GetUser(0).Id != user.Id && room.GetUser(1).Id != user.Id) return;
+
+        rematchSelected = true;
+
+        if (choice)
         {
-            //== game over stuff
+            if (Interlocked.Increment(ref room.Rematch) >= 2)
+            {
+                room.ResetGame();
+            }
+
+            room.OnRoomChanged();
+        }
+        else
+        {
+            PlayerData.RemoveRoom(room.Id);
+            NavigationManager.NavigateTo("/");
         }
     }
 
@@ -130,7 +172,7 @@ else
     {
         if (user is null || PlayerData.GetUserRoom(user.Id) != room)
         {
-            InvokeAsync(StateHasChanged);
+            NavigationManager.NavigateTo("/");
         }
     }
 

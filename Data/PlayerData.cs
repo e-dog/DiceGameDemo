@@ -29,6 +29,8 @@ public class Room
     public int Winner;
     public bool GameOver;
 
+    public int Rematch;
+
 
     public event EventHandler? RoomChanged;
     public void OnRoomChanged()
@@ -46,6 +48,7 @@ public class Room
         Step = 0;
         Winner = -1;
         GameOver = false;
+        Rematch = 0;
     }
 
 
@@ -111,6 +114,35 @@ public class PlayerData
     }
 
 
+    public void RemoveRoom(int id)
+    {
+        Room? room;
+        rooms.TryGetValue(id, out room);
+        if (room is null) return;
+
+        // lock user changing rooms
+        lock(this)
+        {
+            Room? r;
+            rooms.TryRemove(id, out r);
+
+            for (int i=0; i<2; i++)
+            {
+                var ud = users.GetOrAdd(room.GetUser(i).Id, UserDataFactory);
+                ud.room = null;
+            }
+        }
+
+        // notify users
+        for (int i=0; i<2; i++)
+        {
+            users.GetOrAdd(room.GetUser(i).Id, UserDataFactory).OnUserRoomChange();
+        }
+
+        //== record to db
+    }
+
+
     private UserData UserDataFactory(UserId id) => new UserData();
 
 
@@ -138,9 +170,9 @@ public class PlayerData
 
         if (user is not null && otherUser is not null)
         {
-            // lock user changing rooms
             UserData? ud1, ud2;
 
+            // lock user changing rooms
             lock(this)
             {
                 // check if the two users still has no room
