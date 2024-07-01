@@ -18,22 +18,38 @@
 }
 else
 {
-    <div class="row">
+    @if (room.GameOver)
+    {
+        <h1>Game Over</h1>
+    }
+    else
+    {
+        <h1>Turn @(room.Turn+1)</h1>
+    }
+    <div class="d-flex">
         @for (int i=0; i<2; i++)
         {
-            <div class="card" style="max-width: 20rem">
+            bool curSide = (room.Side == i);
+            <div class="card text-center mx-3 @(curSide?"bg-primary text-light":"")" style="width: 20rem">
+                @if (room.GetUser(i).Id == user?.Id)
+                {
+                    <h2 class="card-header text-light bg-dark">@(room.GetUser(i).UserName)</h2>
+                }
+                else
+                {
+                    <h2 class="card-header">@(room.GetUser(i).UserName)</h2>
+                }
                 <div class="card-body">
-                    <h2 class="text-center">@(room.GetUser(i).UserName)</h2>
-                    <h1 class="text-center">@(room.Scores[i])</h1>
+                    <h1>@(room.Scores[i])</h1>
 
-                    <h2 class="text-center">
+                    <h2>
                         @if (String.IsNullOrEmpty(room.Rolls[i])) { <text>&nbsp;</text> }
                         else { @(room.Rolls[i]) }
                     </h2>
 
                     @if (!room.GameOver && room.Side == i && room.GetUser(i).Id == user?.Id)
                     {
-                        <div class="row">
+                        <div>
                             <button @onclick="@(()=>RollDice(false))"  class="btn btn-lg btn-block btn-primary">Two Dice</button>
                             <button @onclick="@(()=>RollDice(true))"   class="btn btn-lg btn-block btn-danger">Super Die</button>
                         </div>
@@ -136,13 +152,13 @@ else
             if (principal is not null) user = await userManager.GetUserAsync(principal);
         }
 
-        PlayerData.UserRoomChange += UserRoomChange;
+        if (user is not null) PlayerData.RegisterUserRoomChangeHandler(user.Id, UserRoomChange);
     }
 
 
     public void Dispose()
     {
         if (room is not null) room.RoomChanged -= RoomChanged;
-        PlayerData.UserRoomChange -= UserRoomChange;
+        if (user is not null) PlayerData.UnregisterUserRoomChangeHandler(user.Id, UserRoomChange);
     }
 }

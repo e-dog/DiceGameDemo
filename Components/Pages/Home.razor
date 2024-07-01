@@ -91,13 +91,16 @@ else
             UserRoomChange(this, EventArgs.Empty);
         }
 
-        PlayerData.UserRoomChange += UserRoomChange;
+        if (user is not null) PlayerData.RegisterUserRoomChangeHandler(user.Id, UserRoomChange);
     }
 
 
     public void Dispose()
     {
-        PlayerData.UserRoomChange -= UserRoomChange;
-        if (matchmaking && user is not null) PlayerData.StopMatchmaking(user.Id);
+        if (user is not null)
+        {
+            PlayerData.UnregisterUserRoomChangeHandler(user.Id, UserRoomChange);
+            if (matchmaking) PlayerData.StopMatchmaking(user.Id);
+        }
     }
 }

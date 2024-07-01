@@ -66,21 +66,26 @@ public class Room
 
 public class PlayerData
 {
+    protected class UserData
+    {
+        public Room? room;
+
+        public event EventHandler? UserRoomChange;
+        public void OnUserRoomChange()
+        => UserRoomChange?.Invoke(this, EventArgs.Empty);
+    }
+
+
     private UserId? waitingUserId;
-    private ConcurrentDictionary<UserId, Room> userRooms = new ConcurrentDictionary<UserId, Room>();
+    private ConcurrentDictionary<UserId, UserData> users = new ConcurrentDictionary<UserId, UserData>();
     private ConcurrentDictionary<int, Room> rooms = new ConcurrentDictionary<int, Room>();
-
-    public event EventHandler? UserRoomChange;
-
-    protected void OnUserRoomChange()
-    => UserRoomChange?.Invoke(this, EventArgs.Empty);
 
 
     public Room? GetUserRoom(UserId userId)
     {
-        Room? room;
-        userRooms.TryGetValue(userId, out room);
-        return room;
+        UserData? ud;
+        users.TryGetValue(userId, out ud);
+        return ud?.room;
     }
 
 
@@ -90,6 +95,23 @@ public class PlayerData
         rooms.TryGetValue(id, out room);
         return room;
     }
+
+
+    public void RegisterUserRoomChangeHandler(UserId userId, EventHandler eh)
+    {
+        var ud = users.GetOrAdd(userId, UserDataFactory);
+        ud.UserRoomChange += eh;
+    }
+
+
+    public void UnregisterUserRoomChangeHandler(UserId userId, EventHandler eh)
+    {
+        var ud = users.GetOrAdd(userId, UserDataFactory);
+        ud.UserRoomChange -= eh;
+    }
+
+
+    private UserData UserDataFactory(UserId id) => new UserData();
 
 
     public async void StartMatchmaking(UserId userId, UserManager<ApplicationUser> userManager)
@@ -116,23 +138,31 @@ public class PlayerData
 
         if (user is not null && otherUser is not null)
         {
+            // lock user changing rooms
+            UserData? ud1, ud2;
+
             lock(this)
             {
+                // check if the two users still has no room
+                if (GetUserRoom(userId) is not null) return;
+                if (GetUserRoom(otherUserId) is not null) return;
+
+                // make a new room
                 var room = new Room(user, otherUser);
-                if (!userRooms.TryAdd(userId, room)) return;
-                if (!userRooms.TryAdd(otherUserId, room))
-                {
-                    userRooms.TryRemove(userId, out room);
-                    return;
-                }
 
                 var rng = Random.Shared;
                 do {
                     room.SetId(rng.Next());
                 } while(!rooms.TryAdd(room.Id, room));
+
+                ud1 = users.GetOrAdd(userId, UserDataFactory);
+                ud2 = users.GetOrAdd(otherUserId, UserDataFactory);
+                ud1.room = room;
+                ud2.room = room;
             }
 
-            OnUserRoomChange();
+            ud1.OnUserRoomChange();
+            ud2.OnUserRoomChange();
         }
     }
 
