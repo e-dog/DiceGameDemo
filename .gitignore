@@ -263,3 +263,4 @@ __pycache__/
 *.sublime-*
 *.db
 *.plan
+*.zip

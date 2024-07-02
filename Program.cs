@@ -7,6 +7,8 @@ using DiceGame.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddSignalR().AddAzureSignalR(Environment.GetEnvironmentVariable("AZURE_SIGNALR_CONNECTIONSTRING"));
+
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
