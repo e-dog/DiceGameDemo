@@ -33,6 +33,29 @@ public class Room
     public int Rematch;
 
 
+    public DateTime TimeOutTime { get { return _timeOut; } }
+    public double TimeOutSeconds { get { return (_timeOut - DateTime.UtcNow).TotalSeconds; } }
+    public bool TimedOut { get { return _timedOut; } }
+
+    public void ResetTimeOut()
+    {
+        if (!GameOver)
+        {
+            _timeOut = DateTime.UtcNow + new TimeSpan(0, 0, 30);
+
+            if (_timeOutTimer is null)
+            {
+                var timer = new System.Threading.Timer(OnTimer, null, 1000, 500);
+                Interlocked.CompareExchange(ref _timeOutTimer, timer, null)?.Dispose();
+            }
+        }
+        else
+        {
+            Interlocked.Exchange(ref _timeOutTimer, null)?.Dispose();
+        }
+    }
+
+
     public event EventHandler? RoomChanged;
     public void OnRoomChanged()
     => RoomChanged?.Invoke(this, EventArgs.Empty);
@@ -50,6 +73,7 @@ public class Room
         Winner = -1;
         GameOver = false;
         Rematch = 0;
+        _timedOut = false;
     }
 
 
@@ -65,6 +89,31 @@ public class Room
 
     private int _id = -1;
     private ApplicationUser[] users = new ApplicationUser[2];
+
+    private DateTime _timeOut;
+    private System.Threading.Timer? _timeOutTimer;
+    private bool _timedOut;
+
+    private void OnTimer(object? state)
+    {
+        if (!GameOver)
+        {
+            if (DateTime.UtcNow > _timeOut)
+            {
+                GameOver = true;
+                _timedOut = true;
+                Step++;
+                Winner = Side;
+            }
+
+            OnRoomChanged();
+        }
+
+        if (GameOver)
+        {
+            Interlocked.Exchange(ref _timeOutTimer, null)?.Dispose();
+        }
+    }
 }
 
 
@@ -150,7 +199,7 @@ public class PlayerData(IDbContextFactory<ApplicationDbContext> _DbFactory)
                 Score1 = room.Scores[0],
                 Score2 = room.Scores[1],
                 Winner = room.Winner,
-                When = DateTime.Now,
+                When = DateTime.UtcNow,
             });
 
             context.SaveChangesAsync();
@@ -206,6 +255,8 @@ public class PlayerData(IDbContextFactory<ApplicationDbContext> _DbFactory)
                 ud2 = users.GetOrAdd(otherUserId, UserDataFactory);
                 ud1.room = room;
                 ud2.room = room;
+
+                room.ResetTimeOut();
             }
 
             ud1.OnUserRoomChange();

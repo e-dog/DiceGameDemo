@@ -14,9 +14,13 @@
 
 <PageTitle>Dice Game: PVP</PageTitle>
 
-@if (room is null)
+@if (!loaded)
 {
     <p>Loading...</p>
+}
+else if (room is null)
+{
+    <h1>Nothing here</h1>
 }
 else
 {
@@ -58,6 +62,13 @@ else
                         else { @(room.Rolls[i]) }
                     </h2>
 
+                    @if (!room.GameOver && room.Side == i)
+                    {
+                        <h1 class="text-danger bg-@(room.TimeOutSeconds > 10 || (int)Math.Floor(room.TimeOutSeconds*2) % 2 == 0 ? "light" : "dark")">
+                            @(Math.Round(room.TimeOutSeconds))
+                        </h1>
+                    }
+
                     @if (!room.GameOver && room.Side == i && room.GetUser(i).Id == user?.Id)
                     {
                         <div>
@@ -71,7 +82,10 @@ else
                         {
                             <h3>Rematch?</h3>
                             <div>
-                                <button @onclick="@(() => RematchChoice(true))"  class="btn btn-primary">Yes!</button>
+                                @if (!room.TimedOut)
+                                {
+                                    <button @onclick="@(() => RematchChoice(true))"  class="btn btn-primary">Yes!</button>
+                                }
                                 <button @onclick="@(() => RematchChoice(false))" class="btn btn-danger">No...</button>
                             </div>
                         }
@@ -91,6 +105,7 @@ else
     private ApplicationUser? user;
     private Room? room;
     private bool rematchSelected = false;
+    private bool loaded = false;
 
     [CascadingParameter]
     private Task<AuthenticationState>? authenticationState  { get; set; }
@@ -101,6 +116,8 @@ else
         if (room is null || user is null) return;
         if (room.GetUser(room.Side).Id != user.Id) return;
 
+        room.ResetTimeOut();
+
         var rng = Random.Shared;
 
         if (super)
@@ -110,9 +127,9 @@ else
             {
                 // game over
                 room.Rolls[room.Side] = "X";
+                room.GameOver = true;
                 room.Step++;
                 room.Winner = room.Side;
-                room.GameOver = true;
             }
             else
             {
@@ -151,11 +168,12 @@ else
 
         rematchSelected = true;
 
-        if (choice)
+        if (choice && !room.TimedOut)
         {
             if (Interlocked.Increment(ref room.Rematch) >= 2)
             {
                 room.ResetGame();
+                room.ResetTimeOut();
             }
 
             room.OnRoomChanged();
@@ -195,6 +213,8 @@ else
         }
 
         if (user is not null) PlayerData.RegisterUserRoomChangeHandler(user.Id, UserRoomChange);
+
+        loaded = true;
     }
 
 
